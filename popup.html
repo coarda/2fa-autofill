@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>2FA Autofill</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <!-- First run -->
+  <section class="view" id="view-setup" hidden>
+    <div class="hero">
+      <div class="logo"></div>
+      <h1>Create your 2FA vault</h1>
+      <p class="muted">Your secret keys are encrypted with this master password and never leave this browser. If you forget it, the vault can't be recovered.</p>
+    </div>
+    <form id="setup-form" class="stack">
+      <label>Master password<input type="password" id="setup-pw" autocomplete="new-password" minlength="8" required></label>
+      <label>Confirm password<input type="password" id="setup-pw2" autocomplete="new-password" minlength="8" required></label>
+      <p class="error" id="setup-error"></p>
+      <button class="primary" type="submit">Create vault</button>
+    </form>
+  </section>
+
+  <!-- Locked -->
+  <section class="view" id="view-unlock" hidden>
+    <div class="hero">
+      <div class="logo"></div>
+      <h1>Vault locked</h1>
+      <p class="muted">Enter your master password to see and fill codes.</p>
+    </div>
+    <form id="unlock-form" class="stack">
+      <label>Master password<input type="password" id="unlock-pw" autocomplete="current-password" required autofocus></label>
+      <p class="error" id="unlock-error"></p>
+      <button class="primary" type="submit" id="unlock-btn">Unlock</button>
+    </form>
+    <button class="text-btn small" id="reset-btn" type="button">Forgot password? Erase vault…</button>
+  </section>
+
+  <!-- Accounts -->
+  <section class="view" id="view-list" hidden>
+    <header class="bar">
+      <input type="search" id="search" placeholder="Search accounts" aria-label="Search accounts">
+      <button class="icon-btn" id="add-btn" title="Add account" aria-label="Add account">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <button class="icon-btn" id="settings-btn" title="Settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      </button>
+      <button class="icon-btn" id="lock-btn" title="Lock vault" aria-label="Lock vault">
+        <svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      </button>
+    </header>
+    <div id="list"></div>
+    <div class="empty" id="empty" hidden>
+      <p><strong>No accounts yet</strong></p>
+      <p class="muted">Add an account using the setup key (or otpauth:// link) that the website shows when you turn on two-factor authentication.</p>
+      <div class="row-btns center">
+        <button class="primary" id="empty-add" type="button">Add account</button>
+        <button type="button" class="open-import">Import from Google Authenticator</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Add / edit -->
+  <section class="view" id="view-edit" hidden>
+    <header class="bar">
+      <button class="icon-btn" id="edit-back" title="Back" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <h2 id="edit-title">Add account</h2>
+    </header>
+    <form id="edit-form" class="stack pad">
+      <label>Paste otpauth:// link <span class="muted">(optional, fills the fields below)</span>
+        <input id="f-uri" placeholder="otpauth://totp/Service:you@mail.com?secret=…" autocomplete="off" spellcheck="false">
+      </label>
+      <label>Account name<input id="f-name" placeholder="e.g. GitHub" required autocomplete="off"></label>
+      <label>Websites <span class="muted">(comma separated)</span>
+        <input id="f-sites" placeholder="github.com, accounts.example.com" autocomplete="off" spellcheck="false">
+      </label>
+      <div class="two">
+        <label>Username<input id="f-username" autocomplete="off" spellcheck="false"></label>
+        <label>Email<input id="f-email" type="email" autocomplete="off" spellcheck="false"></label>
+      </div>
+      <label>Secret key <span class="muted">(Base32 setup key)</span>
+        <input id="f-secret" placeholder="JBSW Y3DP EHPK 3PXP" required autocomplete="off" spellcheck="false">
+      </label>
+      <p class="preview" id="f-preview"></p>
+      <details>
+        <summary>Advanced</summary>
+        <div class="three">
+          <label>Digits<select id="f-digits"><option>6</option><option>7</option><option>8</option></select></label>
+          <label>Period (s)<input id="f-period" type="number" min="5" max="300" value="30"></label>
+          <label>Algorithm<select id="f-alg"><option>SHA-1</option><option>SHA-256</option><option>SHA-512</option></select></label>
+        </div>
+      </details>
+      <p class="error" id="edit-error"></p>
+      <div class="row-btns">
+        <button class="danger" type="button" id="delete-btn" hidden>Delete</button>
+        <span class="spacer"></span>
+        <button type="button" id="cancel-btn">Cancel</button>
+        <button class="primary" type="submit">Save</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- Settings -->
+  <section class="view" id="view-settings" hidden>
+    <header class="bar">
+      <button class="icon-btn" id="settings-back" title="Back" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <h2>Settings</h2>
+    </header>
+    <div class="stack pad">
+      <label class="check"><input type="checkbox" id="s-autofill"> Auto-fill when a site has exactly one matching account</label>
+      <label class="check"><input type="checkbox" id="s-badge"> Show the fill button next to code fields</label>
+      <label>Auto-lock after
+        <select id="s-autolock">
+          <option value="5">5 minutes</option>
+          <option value="15">15 minutes</option>
+          <option value="60">1 hour</option>
+          <option value="240">4 hours</option>
+          <option value="0">Only when the browser closes</option>
+        </select>
+      </label>
+      <p class="muted small">Keyboard shortcut: <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd> fills the code on the current page (change it at chrome://extensions/shortcuts).</p>
+
+      <h3>Change master password</h3>
+      <form id="pw-form" class="stack">
+        <input type="password" id="pw-current" placeholder="Current password" autocomplete="current-password" required>
+        <input type="password" id="pw-next" placeholder="New password (8+ characters)" autocomplete="new-password" minlength="8" required>
+        <p class="error" id="pw-error"></p>
+        <button type="submit">Change password</button>
+      </form>
+
+      <h3>Import</h3>
+      <div class="row-btns">
+        <button type="button" class="open-import">Import from Google Authenticator</button>
+      </div>
+
+      <h3>Backup</h3>
+      <p class="muted small">Backups stay encrypted with your master password.</p>
+      <div class="row-btns">
+        <button type="button" id="export-btn">Export backup</button>
+        <button type="button" id="import-btn">Import backup…</button>
+        <input type="file" id="import-file" accept=".json,application/json" hidden>
+      </div>
+      <p class="error" id="backup-error"></p>
+    </div>
+  </section>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <template id="card-tpl">
+    <article class="card">
+      <div class="info">
+        <div class="name"></div>
+        <div class="sub"></div>
+        <div class="sites"></div>
+      </div>
+      <div class="otp">
+        <button class="code" type="button" title="Copy code"></button>
+        <div class="timer"><div class="timer-fill"></div></div>
+      </div>
+      <div class="actions">
+        <button class="fill primary small" type="button">Fill</button>
+        <button class="copy small" type="button">Copy</button>
+        <button class="edit small text-btn" type="button">Edit</button>
+      </div>
+    </article>
+  </template>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

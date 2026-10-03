@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Import from Google Authenticator</title>
+  <link rel="stylesheet" href="import.css">
+</head>
+<body>
+  <main>
+    <header class="top">
+      <img src="icons/icon48.png" alt="" width="36" height="36">
+      <div>
+        <h1>Import from Google Authenticator</h1>
+        <p class="muted">Everything happens on this computer. Nothing is uploaded anywhere.</p>
+      </div>
+    </header>
+
+    <!-- Vault locked -->
+    <section class="card" id="locked" hidden>
+      <h2>Unlock your vault first</h2>
+      <form id="unlock-form" class="inline">
+        <input type="password" id="unlock-pw" placeholder="Master password" autocomplete="current-password" required>
+        <button class="primary" type="submit">Unlock</button>
+      </form>
+      <p class="error" id="unlock-error"></p>
+    </section>
+    <section class="card" id="no-vault" hidden>
+      <h2>Create your vault first</h2>
+      <p>Click the 2FA Autofill icon in Chrome's toolbar, set a master password, then reload this page.</p>
+    </section>
+
+    <div id="main" hidden>
+      <section class="card">
+        <h2>1. Show the export QR code on your phone</h2>
+        <ol class="steps">
+          <li>Open <b>Google Authenticator</b> on your phone.</li>
+          <li>Tap the <b>☰ menu</b> (or ⋮) → <b>Transfer accounts</b> → <b>Export accounts</b>.</li>
+          <li>Select the accounts you want and tap <b>Next</b>. A QR code appears. If you picked many accounts there may be several QR codes. Import each one.</li>
+        </ol>
+        <p class="note">Your phone won't allow screenshots of that screen, so the easiest way is to hold the phone up to your webcam. You can also take a photo of the phone screen with another device and upload it.</p>
+      </section>
+
+      <section class="card">
+        <h2>2. Read the QR code</h2>
+        <div class="methods">
+          <div class="method">
+            <h3>Webcam</h3>
+            <div class="video-wrap" id="video-wrap" hidden>
+              <video id="video" playsinline muted></video>
+              <div class="scan-frame"></div>
+            </div>
+            <button class="primary" id="cam-btn" type="button">Start webcam</button>
+            <p class="muted small" id="cam-status"></p>
+          </div>
+          <div class="method">
+            <h3>Photo or screenshot</h3>
+            <label class="drop" id="drop">
+              <input type="file" id="file" accept="image/*" multiple>
+              <span>Choose images, or drop them here</span>
+            </label>
+            <p class="muted small" id="file-status"></p>
+          </div>
+          <div class="method">
+            <h3>Paste link</h3>
+            <textarea id="paste" rows="4" placeholder="otpauth-migration://offline?data=…&#10;(one per line; otpauth:// links work too)" spellcheck="false"></textarea>
+            <button type="button" id="paste-btn">Read links</button>
+          </div>
+        </div>
+        <p class="error" id="read-error"></p>
+        <div class="batches" id="batches"></div>
+      </section>
+
+      <section class="card" id="review" hidden>
+        <h2>3. Check the accounts and add their websites</h2>
+        <p class="muted">Add the website for each account so codes are filled there automatically (e.g. <code>github.com</code>). Leave it blank if you only want to copy codes from the popup. The code shown should match Google Authenticator.</p>
+        <table>
+          <thead><tr><th></th><th>Account</th><th>Username / email</th><th>Websites</th><th>Code now</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <p class="error" id="import-error"></p>
+        <div class="actions">
+          <span class="muted" id="summary"></span>
+          <button class="primary" id="import-btn" type="button">Import</button>
+        </div>
+      </section>
+
+      <section class="card done" id="done" hidden>
+        <h2>✓ Import complete</h2>
+        <p id="done-text"></p>
+        <p class="muted">Keep the accounts in Google Authenticator too, as a backup. You can close this tab.</p>
+      </section>
+    </div>
+  </main>
+
+  <!-- QR reader for browsers without a built-in barcode scanner (Chrome on Windows). -->
+  <script src="vendor/jsQR.js"></script>
+  <script type="module" src="import.js"></script>
+</body>
+</html>
