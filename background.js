@@ -1,7 +1,7 @@
-import { deriveKey, encryptJSON, decryptJSON, totp, randomBytes, toB64, fromB64, hostMatches } from "./lib.js";
+import { deriveKey, encryptJSON, decryptJSON, totp, randomBytes, toB64, fromB64, hostMatches, keyFromPrf } from "./lib.js";
 
 const ITERATIONS = 600000;
-const DEFAULT_SETTINGS = { autoLockMinutes: 15, autoFill: true, showBadge: true };
+const DEFAULT_SETTINGS = { autoLockMinutes: 15, autoFill: true, showBadge: true, autoBio: true };
 
 // The vault (encrypted accounts) lives in chrome.storage.local.
 // While unlocked, the derived AES key is kept in chrome.storage.session, which is
@@ -72,6 +72,31 @@ function checkPassword(password) {
   if (typeof password !== "string" || password.length < 8) throw new Error("Use a password of at least 8 characters.");
 }
 
+// ---- fingerprint / Windows Hello unlock ----
+// "prf" mode: the vault key is encrypted with a secret that only the passkey can produce after a
+// fingerprint/face/PIN check, so the stored copy is useless without it.
+// "device" mode (for devices without PRF support): the wrapping key is stored next to it and the
+// fingerprint check only gates the unlock in the UI. Weaker, and the user is told so before enabling.
+
+async function getBio() {
+  const { bio } = await chrome.storage.local.get("bio");
+  return bio || null;
+}
+
+async function clearBio() {
+  await chrome.storage.local.remove("bio");
+}
+
+async function openBioWindow(mode) {
+  await chrome.windows.create({
+    url: chrome.runtime.getURL(`biometric.html?mode=${mode}`),
+    type: "popup",
+    width: 420,
+    height: 440,
+    focused: true,
+  });
+}
+
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "autolock") lock();
 });
@@ -127,6 +152,7 @@ const popupHandlers = {
     const salt = randomBytes(16);
     const key = await deriveKey(next, salt, ITERATIONS);
     await writeAccounts(key, accounts, { v: 1, salt: toB64(salt), iterations: ITERATIONS });
+    await clearBio(); // it wrapped the old key
     await unlockWith(key);
   },
 
@@ -139,12 +165,83 @@ const popupHandlers = {
       Number.isInteger(vault.iterations);
     if (!ok) throw new Error("That file is not a 2FA Autofill backup.");
     await lock();
+    await clearBio();
     await chrome.storage.local.set({ vault, siteIndex: [] });
   },
 
   async resetVault() {
     await lock();
-    await chrome.storage.local.remove(["vault", "siteIndex"]);
+    await chrome.storage.local.remove(["vault", "siteIndex", "bio"]);
+  },
+
+  async bioStatus() {
+    const bio = await getBio();
+    return { enabled: !!bio, mode: bio?.mode ?? null };
+  },
+
+  // What the fingerprint page needs to ask for the passkey (no secrets).
+  async bioParams() {
+    const bio = await getBio();
+    if (!bio) throw new Error("Fingerprint unlock is not turned on.");
+    return { mode: bio.mode, credentialId: bio.credentialId, prfSalt: bio.prfSalt };
+  },
+
+  async bioEnroll({ credentialId, prfSalt, prfOutput }) {
+    const key = await requireKey();
+    const jwk = await crypto.subtle.exportKey("jwk", key);
+    let wrapKey;
+    let deviceKey = null;
+    if (prfOutput) {
+      wrapKey = await keyFromPrf(fromB64(prfOutput));
+    } else {
+      wrapKey = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
+      deviceKey = await crypto.subtle.exportKey("jwk", wrapKey);
+    }
+    const sealed = await encryptJSON(wrapKey, jwk);
+    await chrome.storage.local.set({
+      bio: { mode: prfOutput ? "prf" : "device", credentialId, prfSalt, deviceKey, ...sealed },
+    });
+  },
+
+  async bioUnlock({ prfOutput }) {
+    const bio = await getBio();
+    if (!bio) throw new Error("Fingerprint unlock is not turned on.");
+    const wrapKey = bio.mode === "prf"
+      ? await keyFromPrf(prfOutput ? fromB64(prfOutput) : null)
+      : await crypto.subtle.importKey("jwk", bio.deviceKey, { name: "AES-GCM" }, false, ["decrypt"]);
+    let key;
+    try {
+      const jwk = await decryptJSON(wrapKey, bio);
+      key = await crypto.subtle.importKey("jwk", jwk, { name: "AES-GCM" }, true, ["encrypt", "decrypt"]);
+    } catch {
+      throw new Error("Fingerprint unlock failed. Unlock with your master password instead.");
+    }
+    let accounts;
+    try {
+      accounts = await readAccounts(key);
+    } catch {
+      await clearBio();
+      throw new Error("Fingerprint unlock is out of date. Unlock with your master password, then turn it on again in Settings.");
+    }
+    await chrome.storage.local.set({ siteIndex: buildSiteIndex(accounts) });
+    await unlockWith(key);
+  },
+
+  clearBio,
+
+  // "Use master password instead": the next popup opening shows the password form, not the fingerprint prompt.
+  async bioSkipOnce() {
+    await chrome.storage.session.set({ bioSkip: true });
+  },
+
+  async consumeBioSkip() {
+    const { bioSkip } = await chrome.storage.session.get("bioSkip");
+    if (bioSkip) await chrome.storage.session.remove("bioSkip");
+    return !!bioSkip;
+  },
+
+  async openBioWindow({ mode }) {
+    await openBioWindow(mode === "enroll" ? "enroll" : "unlock");
   },
 };
 
@@ -169,6 +266,11 @@ const contentHandlers = {
   },
 
   async openPopup() {
+    // With fingerprint unlock on, go straight to the fingerprint prompt.
+    if (await getBio()) {
+      await openBioWindow("unlock");
+      return true;
+    }
     try {
       await chrome.action.openPopup();
       return true;

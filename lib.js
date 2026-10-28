@@ -273,3 +273,18 @@ export function guessSites(issuer) {
   const key = String(issuer || "").toLowerCase().replace(/\.(com|net|org|io)$/, "").replace(/[^a-z0-9]/g, "");
   return KNOWN_SITES[key] ? [...KNOWN_SITES[key]] : [];
 }
+
+// ---- fingerprint / Windows Hello (WebAuthn PRF) ----
+
+// Turns the 32-byte secret a passkey returns through the WebAuthn PRF extension into an AES key.
+export async function keyFromPrf(prfBytes) {
+  if (!prfBytes?.length) throw new Error("Fingerprint unlock didn't return a key.");
+  const base = await crypto.subtle.importKey("raw", prfBytes, "HKDF", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(32), info: new TextEncoder().encode("2fa-autofill vault unlock") },
+    base,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}

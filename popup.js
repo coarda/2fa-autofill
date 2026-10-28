@@ -47,7 +47,7 @@ async function init() {
 
   const { initialized, unlocked } = await call("status");
   if (!initialized) return show("setup");
-  if (!unlocked) return show("unlock");
+  if (!unlocked) return showUnlock({ auto: true });
   await openList();
 }
 
@@ -65,6 +65,24 @@ $("#setup-form").addEventListener("submit", async (e) => {
       await openList();
     } catch (ex) { err.textContent = ex.message; }
   });
+});
+
+async function showUnlock({ auto = false } = {}) {
+  const { enabled } = await call("bioStatus");
+  // Opening the popup while locked goes straight to the fingerprint prompt (can be turned off in Settings).
+  if (enabled && auto && (await call("getSettings")).autoBio && !(await call("consumeBioSkip"))) {
+    await call("openBioWindow", { mode: "unlock" });
+    return window.close();
+  }
+  $("#bio-unlock").hidden = !enabled;
+  show("unlock");
+  if (enabled) setTimeout(() => $("#bio-unlock-btn").focus(), 0);
+}
+
+// The fingerprint prompt runs in its own small window; the popup would close when Windows Hello takes focus.
+$("#bio-unlock-btn").addEventListener("click", async () => {
+  await call("openBioWindow", { mode: "unlock" });
+  window.close();
 });
 
 $("#unlock-form").addEventListener("submit", async (e) => {
@@ -97,7 +115,7 @@ $("#reset-btn").addEventListener("click", async () => {
 $("#lock-btn").addEventListener("click", async () => {
   await call("lock");
   accounts = [];
-  show("unlock");
+  await showUnlock();
 });
 
 // ---------- list ----------
@@ -335,24 +353,50 @@ $("#settings-btn").addEventListener("click", async () => {
   $("#s-autofill").checked = s.autoFill;
   $("#s-badge").checked = s.showBadge;
   $("#s-autolock").value = String(s.autoLockMinutes);
+  $("#s-autobio").checked = s.autoBio;
   $("#pw-error").textContent = "";
   $("#backup-error").textContent = "";
+  await renderBio();
   show("settings");
 });
 $("#settings-back").addEventListener("click", openList);
 
-for (const id of ["#s-autofill", "#s-badge", "#s-autolock"]) {
+for (const id of ["#s-autofill", "#s-badge", "#s-autolock", "#s-autobio"]) {
   $(id).addEventListener("change", async () => {
     await call("saveSettings", {
       settings: {
         autoFill: $("#s-autofill").checked,
         showBadge: $("#s-badge").checked,
         autoLockMinutes: Number($("#s-autolock").value),
+        autoBio: $("#s-autobio").checked,
       },
     });
     toast("Settings saved");
   });
 }
+
+async function renderBio() {
+  const { enabled, mode } = await call("bioStatus");
+  $("#bio-toggle").textContent = enabled ? "Turn off fingerprint unlock" : "Turn on fingerprint unlock";
+  $("#bio-toggle").dataset.enabled = enabled ? "1" : "";
+  $("#s-autobio-row").hidden = !enabled;
+  $("#bio-status").textContent = !enabled
+    ? "Unlock with your fingerprint, face or Windows Hello PIN instead of typing your master password."
+    : mode === "prf"
+      ? "On. Your vault key is protected by your fingerprint / Windows Hello."
+      : "On (limited mode). This device can't encrypt the vault with your fingerprint, so it only guards the unlock button.";
+}
+
+$("#bio-toggle").addEventListener("click", async () => {
+  if ($("#bio-toggle").dataset.enabled) {
+    await call("clearBio");
+    await renderBio();
+    toast("Fingerprint unlock turned off");
+  } else {
+    await call("openBioWindow", { mode: "enroll" });
+    window.close();
+  }
+});
 
 $("#pw-form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -362,7 +406,9 @@ $("#pw-form").addEventListener("submit", async (e) => {
     try {
       await call("changePassword", { current: $("#pw-current").value, next: $("#pw-next").value });
       e.target.reset();
-      toast("Password changed");
+      const hadBio = !!$("#bio-toggle").dataset.enabled;
+      await renderBio();
+      toast(hadBio ? "Password changed. Turn fingerprint unlock on again." : "Password changed");
     } catch (ex) { err.textContent = ex.message; }
   });
 });
@@ -391,7 +437,7 @@ $("#import-file").addEventListener("change", async (e) => {
     if (!ok) return;
     await call("importVault", { vault });
     accounts = [];
-    show("unlock");
+    await showUnlock();
   } catch (ex) {
     err.textContent = ex instanceof SyntaxError ? "That file isn't valid JSON." : ex.message;
   }

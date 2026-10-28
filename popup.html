@@ -28,6 +28,10 @@
       <h1>Vault locked</h1>
       <p class="muted">Enter your master password to see and fill codes.</p>
     </div>
+    <div class="stack bio-unlock" id="bio-unlock" hidden>
+      <button class="primary" type="button" id="bio-unlock-btn">Unlock with fingerprint</button>
+      <p class="muted small or">or use your master password</p>
+    </div>
     <form id="unlock-form" class="stack">
       <label>Master password<input type="password" id="unlock-pw" autocomplete="current-password" required autofocus></label>
       <p class="error" id="unlock-error"></p>
@@ -120,6 +124,13 @@
         </select>
       </label>
       <p class="muted small">Keyboard shortcut: <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd> fills the code on the current page (change it at chrome://extensions/shortcuts).</p>
+
+      <h3>Fingerprint unlock</h3>
+      <p class="muted small" id="bio-status">Unlock with your fingerprint, face or Windows Hello PIN instead of typing your master password.</p>
+      <label class="check" id="s-autobio-row"><input type="checkbox" id="s-autobio"> Ask for my fingerprint as soon as I open the extension</label>
+      <div class="row-btns">
+        <button type="button" id="bio-toggle">Turn on fingerprint unlock</button>
+      </div>
 
       <h3>Change master password</h3>
       <form id="pw-form" class="stack">

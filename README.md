@@ -36,6 +36,14 @@ Only time-based (TOTP) accounts are imported. Old counter-based (HOTP) entries a
 
 Both single code boxes and "one box per digit" layouts are supported.
 
+## Fingerprint / Windows Hello unlock
+
+Settings → **Turn on fingerprint unlock**. A small window asks for your fingerprint, face or Windows Hello PIN. After that, when the vault is locked (for example after restarting Chrome), clicking the extension icon asks for your fingerprint straight away. Choose **Use master password instead** in that window to type your password. To get the password screen by default (with an **Unlock with fingerprint** button), untick **Ask for my fingerprint as soon as I open the extension** in Settings. The fill button on websites and the keyboard shortcut also open the fingerprint prompt.
+
+- On devices that support the WebAuthn PRF extension, the vault key is encrypted with a secret only your passkey can produce after the fingerprint check.
+- On devices without PRF support, you can still turn it on in a **limited mode**: the unlock key is stored on this computer and the fingerprint only guards the button. The extension warns you before enabling it.
+- Changing the master password or importing a backup turns fingerprint unlock off. Turn it on again afterwards.
+
 ## Security notes
 
 - Secrets are encrypted with AES-256-GCM using a key derived from your master password (PBKDF2-SHA256, 600,000 rounds) and stored only in this Chrome profile.
